@@ -1,0 +1,53 @@
+%YAML 1.1
+---
+sensor-name: "{{ .SampleName }}"
+
+{{- if .C2Ip }}
+vars:
+  address-groups:
+    VM_HOST: "{{ .VmIp }}"
+    C2_SERVER: "{{ .C2Ip }}"
+    HOME_NET: "[$C2_SERVER, $VM_HOST]"
+{{- else }}
+vars:
+  address-groups:
+    VM_HOST: "{{ .VmIp }}"
+    HOME_NET: "[$VM_HOST]"
+{{- end }}
+
+{{- if .C2Ip }}
+default-rule-path: /home/john/research/bottle-agent/instrumentation
+rule-files:
+  - c2.rules
+  - ddos_behavioral.rules
+{{- end }}
+
+# outputs: keep only EVE JSON (compact, easy to parse)
+{{- if .C2Ip }}
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+        - dns
+        - stats
+{{- else }}
+outputs:
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+        - dns
+        - stats
+{{- end }}
+
+# logging: keep concise (inherit other defaults)
+logging:
+  default-log-level: notice
+
+# runmode - normal single-run pcap analysis
+runmode: single

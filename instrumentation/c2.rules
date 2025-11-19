@@ -1,0 +1,10 @@
+# tcp data/traffic
+alert tcp $C2_SERVER any -> $VM_HOST any ( msg:"C2 Traffic: C2 Communicates with Sandbox (ANY)"; threshold: type limit, track by_src, count 1, seconds 30; flow:stateless; gid: 2; sid:1000010; rev:1;  )
+alert tcp $C2_SERVER any -> $VM_HOST any ( msg:"C2 Traffic: C2 Communicates with Sandbox (PSH)"; flags:PA; flow:established; gid: 2; sid:1000011; rev:1;  )
+
+# udp data
+alert udp $C2_SERVER any -> $VM_HOST any ( msg:"C2 Traffic: C2 Communicates with Sandbox (UDP)"; threshold: type limit, track by_src, count 1, seconds 5; flow:established; gid: 2; sid:1000020; rev:1;  )
+
+# bot active
+alert tcp $VM_HOST any -> $C2_SERVER any ( msg:"C2 Traffic: Sandbox Communicates with C2 (heartbeat, TCP)"; threshold: type limit, track by_src, count 1, seconds 30; flow:stateless; gid: 2; sid:1000031; rev:1;  )
+alert udp $VM_HOST any -> $C2_SERVER any ( msg:"C2 Traffic: Sandbox Communicates with C2 (heartbeat, UDP)"; threshold: type limit, track by_src, count 1, seconds 30; flow:stateless; gid: 2; sid:1000032; rev:1;  )

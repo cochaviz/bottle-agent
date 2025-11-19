@@ -1,0 +1,10 @@
+cli:
+    - command: tcpdump -i {{ .VmInterface }} -w c2_traffic.pcap host {{ .VmIp }} and host {{ .C2Ip }}
+      output: file
+      requires:
+          - C2Ip
+    - command: gomon {{ .VmInterface }} {{ .VmIp }} --sample-id {{ .SampleName }} --save-packets 100 --eve-log-path /var/log/suricata/eve.json --capture-dir {{ .LogDir }}/captures {{- if .C2Ip }} --c2-ip {{ .C2Ip }} {{- end }}
+      output: file
+suricata:
+    - config: /home/john/research/bottle-agent/instrumentation/suricata.yml
+      output: file
