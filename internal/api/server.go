@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"cochaviz/bottle-agent/internal/analysis"
+	"github.com/cochaviz/bottle-agent/internal/analysis"
 )
 
 // HashDownloader fetches samples from an external source using a hash.

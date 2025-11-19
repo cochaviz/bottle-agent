@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"cochaviz/bottle-agent/internal/appconfig"
+	"github.com/cochaviz/bottle-agent/internal/appconfig"
 )
 
 // Monitor watches the Suricata eve.json log and marks analyses as stale if the

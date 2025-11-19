@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"cochaviz/bottle-agent/internal/analysis"
+	"github.com/cochaviz/bottle-agent/internal/analysis"
 )
 
 const (

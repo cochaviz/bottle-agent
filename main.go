@@ -18,11 +18,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"cochaviz/bottle-agent/internal/analysis"
-	"cochaviz/bottle-agent/internal/api"
-	"cochaviz/bottle-agent/internal/appconfig"
-	"cochaviz/bottle-agent/internal/daemonclient"
-	"cochaviz/bottle-agent/internal/malwarebazaar"
+	"github.com/cochaviz/bottle-agent/internal/analysis"
+	"github.com/cochaviz/bottle-agent/internal/api"
+	"github.com/cochaviz/bottle-agent/internal/appconfig"
+	"github.com/cochaviz/bottle-agent/internal/daemonclient"
+	"github.com/cochaviz/bottle-agent/internal/malwarebazaar"
 )
 
 func main() {
