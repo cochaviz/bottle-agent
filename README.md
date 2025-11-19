@@ -1,27 +1,144 @@
 # bottle-agent
 
-`bottle-agent` is the agent responsible for managing advanced analysis and
-pipelines around the [`bottle`](https://github.com/cochaviz/bottle) interface:
+`bottle-agent` is the orchestration and monitoring layer that sits on top of a
+[`bottle`](https://github.com/cochaviz/bottle) deployment. It keeps a ledger of
+analyses, submits runs to the bottle daemon, watches Suricata logs for C2
+activity, and optionally ingests new samples from MalwareBazaar. Use it when you
+need to keep long-running sandboxes alive, automatically requeue samples, and
+collect forensic data without babysitting the bottle daemon.
 
-> bottle is a Go toolkit for building long-lived sandbox images and repeatedly
-> running botnet or malware samples inside them. It wraps libvirt, nftables, and
-> a curated set of Debian-based VM specifications so you can build images, lease
-> them for sandbox runs, launch short-lived analyses, or hand those runs off to
-> a daemon for continuous monitoring.
+This document is organized so the most important pieces (capabilities, install,
+usage) come first; the design notes that follow provide deeper context when
+needed.
 
-The agent fulfills several roles:
+## Capabilities
 
-- **API**: Provides an API for submitting analysis jobs and managing agent state.
-- **Orchestration**: Ensure submitted samples are analyzed, even in the event of a
-  crash or restart.
-- **C2 Detection and Monitoring**: Analyzes logs to detect command and control
-  (C2) communications within the sandboxed environment, and opening firewall
-  rules to allow communication with the C2 server.
-- **Miscellaneous**: 
-  - Provides additional functionality such as taking a sample hash and retrieving it from MalwareBazaar.
-  - Continuously watches Malwarebazaar for new samples, running them automatically.
+- **REST API + CLI client** – submit, list, update, delete, and batch analyses
+  through `/analyses` endpoints or the bundled `bottle-agent client` subcommand.
+- **Ledger-driven orchestration** – JSON-lines ledger tracks desired state;
+  orchestrator reconciles it against the running bottle daemon so analyses
+  survive restarts.
+- **C2 activity monitoring** – tails Suricata `eve.json`, tracks signature IDs
+  per sample, and marks analyses stale when beaconing stops or timeouts hit.
+- **MalwareBazaar integration** – accepts hash-based submissions, downloads
+  samples automatically, and can watch the feed for new material.
+- **Batching** – queue directories of samples or lists of hashes, enforcing
+  single-run-per-sample/C2 rules to conserve resources.
+- **Pluggable instrumentation** – pass the instrumentation profile expected by
+  bottle (e.g. `instrumentation/default`) for each run.
 
-In the end, the goal of the `bottle-agent` is to provide a complete pipeline that takes a sample, detects C2 actvitity and ensures that 
+## Installation
+
+### Requirements
+
+- Go 1.21+ toolchain (module targets Go 1.24).
+- Running bottle daemon (`bottle daemon serve …`) with its unix socket exposed.
+- Suricata logs accessible at `/var/log/suricata/eve.json` (or another path
+  configured in `config.yaml`).
+- Optional: MalwareBazaar API key (`MALWAREBAZAAR_API_KEY` env var or
+  `config.yaml` field) if you want hash ingestion/watchers.
+
+### Steps
+
+```shell
+git clone https://github.com/cochaviz/bottle-agent.git
+cd bottle-agent
+go install .               # installs $GOBIN/bottle-agent
+# or
+go build -o bottle-agent . # builds local binary in the repo
+cp config.example.yaml config.yaml  # and edit to match your environment
+```
+
+Inside `config.yaml`:
+
+- Update `monitoring.eve_path` and timeout rules to match your Suricata setup.
+- Configure `malwarebazaar.*` (sample directory, API key) and
+  `malwarebazaar.watcher.*` (instrumentation, timeouts, tags) if you
+  plan to retrieve hashes automatically.
+- Point `instrumentation` fields at a profile known to the bottle daemon.
+
+## Usage
+
+### Serving the API / orchestrator
+
+```shell
+./bottle-agent serve \
+  -listen ":8080" \
+  -ledger data/ledger.jsonl \
+  -daemon-socket /var/run/bottle/daemon.sock \
+  -config config.yaml
+```
+
+- `-ledger` points at the JSON-lines ledger file (created if absent).
+- `-daemon-socket` must match the bottle daemon socket path.
+- `-config` loads monitoring/MalwareBazaar settings (optional).
+
+### CLI client
+
+```shell
+./bottle-agent client status                    # list analyses
+./bottle-agent client add -sample foo -path sample.exe
+./bottle-agent client add -sample bar -hash <sha256>
+./bottle-agent client delete <id>
+./bottle-agent client add-bulk -dir /path/to/samples
+./bottle-agent client add-bulk -hashes hash1,hash2
+```
+
+Use `-server http://host:port` for remote agents (defaults to
+`http://127.0.0.1:8080`).
+
+### Running alongside bottle
+
+1. Start the bottle daemon with your preferred instrumentation set.
+2. Launch `bottle-agent serve …` on the same host, pointing `-daemon-socket` at
+   the bottle daemon socket.
+3. Interact via the REST API or CLI client; the orchestrator translates entries
+   into `start_analysis` / `stop_analysis` commands.
+4. Export `MALWAREBAZAAR_API_KEY` and enable the watcher in `config.yaml` if you
+   want automatic sample ingestion.
+
+### Example systemd service
+
+You can let systemd keep the orchestrator online by dropping a unit such as
+`/etc/systemd/system/bottle-agent.service`:
+
+```ini
+[Unit]
+Description=bottle-agent orchestrator
+Wants=network-online.target
+After=network-online.target
+After=suricata.service bottle-daemon.service
+
+[Service]
+Type=simple
+User=bottle
+Group=bottle
+WorkingDirectory=/opt/bottle-agent
+EnvironmentFile=-/etc/default/bottle-agent
+ExecStart=/opt/bottle-agent/bottle-agent serve \
+    -listen ":8080" \
+    -ledger /opt/bottle-agent/data/ledger.jsonl \
+    -daemon-socket /var/run/bottle/daemon.sock \
+    -config /opt/bottle-agent/config.yaml
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+- Adjust the service `User`/`Group`, paths, and `ExecStart` arguments to match
+  your install layout (the `EnvironmentFile` is optional but convenient for
+  passing credentials such as `MALWAREBAZAAR_API_KEY`).
+- Reload systemd (`sudo systemctl daemon-reload`) and enable the unit
+  (`sudo systemctl enable --now bottle-agent.service`) to have the agent start
+  immediately and on future boots.
+
+## Design Details (Deep Dive)
+
+The sections below retain the original deep explanation of how the agent works
+internally. They are useful when you need to understand *why* the system behaves
+in a certain way, or when modifying instrumentation/monitoring internals.
 
 ## C2 Detection
 
@@ -125,3 +242,28 @@ hash, it will attempt to look this file up in MalwareBazaar and retrieve it.
 
 This ties into another miscellaneous feature, which is the ability to watch for
 new samples on MalwareBazaar (checks once every hour) that are then analyzed.
+
+## Usage (Legacy Summary)
+
+For quick reference, the legacy commands remain valid:
+
+```shell
+go build -o bottle-agent .
+./bottle-agent serve -listen ":8080" -ledger data/ledger.jsonl -daemon-socket /var/run/bottle/daemon.sock -config config.yaml
+./bottle-agent client status
+./bottle-agent client add ...
+```
+
+The modern `bottle-agent` binary simply inlines these commands.
+
+### Running Alongside bottle
+
+1. Start the bottle daemon (refer to the bottle README) ensuring it can access
+   your VM definitions and instrumentation profiless.
+2. Launch `bottle-agent serve …` on the same host, pointing `-daemon-socket` at the
+   bottle daemon’s unix socket.
+3. Submit jobs via the REST API or the CLI client. The orchestrator will call
+   `start_analysis` / `stop_analysis` on the daemon as needed while keeping the
+   ledger in sync.
+4. Optionally export `MALWAREBAZAAR_API_KEY` to allow hash-based submissions and
+   enable the watcher configured in `config.yaml`.
