@@ -16,7 +16,7 @@ vars:
 {{- end }}
 
 {{- if .C2Ip }}
-default-rule-path: /home/john/research/bottle-agent/instrumentation
+default-rule-path: /opt/bottle-agent/instrumentation/default
 rule-files:
   - c2.rules
   - ddos_behavioral.rules

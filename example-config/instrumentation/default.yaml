@@ -6,5 +6,5 @@ cli:
     - command: gomon {{ .VmInterface }} {{ .VmIp }} --sample-id {{ .SampleName }} --save-packets 100 --eve-log-path /var/log/suricata/eve.json --capture-dir {{ .LogDir }}/captures {{- if .C2Ip }} --c2-ip {{ .C2Ip }} {{- end }}
       output: file
 suricata:
-    - config: /home/john/research/bottle-agent/instrumentation/default/suricata.yml
+    - config: /opt/bottle-agent/instrumentation/default/suricata.yml
       output: file
