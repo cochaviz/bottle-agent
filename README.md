@@ -111,11 +111,11 @@ After=suricata.service bottle-daemon.service
 
 [Service]
 Type=simple
-User=bottle
-Group=bottle
+User=root
+Group=root
 WorkingDirectory=/opt/bottle-agent
 EnvironmentFile=-/etc/default/bottle-agent
-ExecStart=/opt/bottle-agent/bottle-agent serve \
+ExecStart=/root/go/bin/bottle-agent serve \
     -listen ":8080" \
     -ledger /opt/bottle-agent/data/ledger.jsonl \
     -daemon-socket /var/run/bottle/daemon.sock \
