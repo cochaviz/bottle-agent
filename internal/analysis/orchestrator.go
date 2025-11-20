@@ -5,8 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
+
+	"github.com/cochaviz/bottle/daemon"
 )
+
+var ErrDaemonUnavailable = errors.New("bottle daemon client is not configured")
 
 // OrchestratorConfig tunes how aggressive the orchestrator operates.
 type OrchestratorConfig struct {
@@ -17,14 +22,14 @@ type OrchestratorConfig struct {
 // Orchestrator keeps the daemon state in sync with the ledger.
 type Orchestrator struct {
 	ledger       *Ledger
-	runner       Runner
+	daemon       *daemon.Client
 	pollInterval time.Duration
 	logger       *slog.Logger
 	triggerCh    chan struct{}
 }
 
 // NewOrchestrator wires the dependencies together.
-func NewOrchestrator(ledger *Ledger, runner Runner, cfg OrchestratorConfig) *Orchestrator {
+func NewOrchestrator(ledger *Ledger, daemonClient *daemon.Client, cfg OrchestratorConfig) *Orchestrator {
 	poll := cfg.PollInterval
 	if poll <= 0 {
 		poll = 5 * time.Second
@@ -33,12 +38,9 @@ func NewOrchestrator(ledger *Ledger, runner Runner, cfg OrchestratorConfig) *Orc
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if runner == nil {
-		runner = DryRunner{}
-	}
 	return &Orchestrator{
 		ledger:       ledger,
-		runner:       runner,
+		daemon:       daemonClient,
 		pollInterval: poll,
 		logger:       logger.With("component", "orchestrator"),
 		triggerCh:    make(chan struct{}, 1),
@@ -51,6 +53,119 @@ func (o *Orchestrator) Trigger() {
 	case o.triggerCh <- struct{}{}:
 	default:
 	}
+}
+
+// startJob launches a new analysis job through the daemon client.
+func (o *Orchestrator) startJob(ctx context.Context, opts StartOptions) (string, error) {
+	if err := opts.Validate(); err != nil {
+		return "", err
+	}
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		default:
+		}
+	}
+	if o.daemon == nil {
+		if opts.ID == "" {
+			opts.ID = generateDryRunID()
+		}
+		return opts.ID, nil
+	}
+	return o.daemon.StartAnalysis(opts.toDaemonRequest())
+}
+
+// stopJob requests the daemon to stop a running job.
+func (o *Orchestrator) stopJob(ctx context.Context, id string) error {
+	if strings.TrimSpace(id) == "" {
+		return errors.New("id is required")
+	}
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+	}
+	if o.daemon == nil {
+		return nil
+	}
+	return o.daemon.StopAnalysis(id)
+}
+
+// listJobs returns the current runtime state from the daemon.
+func (o *Orchestrator) listJobs(ctx context.Context) ([]RuntimeStatus, error) {
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+	if o.daemon == nil {
+		return nil, nil
+	}
+	statuses, err := o.daemon.List()
+	if err != nil {
+		return nil, err
+	}
+	result := make([]RuntimeStatus, 0, len(statuses))
+	for _, status := range statuses {
+		result = append(result, RuntimeStatus{
+			ID:        status.ID,
+			Sample:    status.Sample,
+			C2IP:      status.C2Ip,
+			StartedAt: status.StartedAt,
+			Running:   status.Running,
+			Error:     status.Error,
+		})
+	}
+	return result, nil
+}
+
+// inspectJob fetches the detailed state for a job directly from the daemon.
+func (o *Orchestrator) inspectJob(ctx context.Context, id string) (*daemon.WorkerDetails, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, errors.New("id is required")
+	}
+	if o == nil {
+		return nil, errors.New("orchestrator is not configured")
+	}
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+	}
+	if o.daemon == nil {
+		return nil, ErrDaemonUnavailable
+	}
+	details, err := o.daemon.Inspect(id)
+	if err != nil {
+		return nil, err
+	}
+	return &details, nil
+}
+
+// ListRuntime exposes the daemon worker statuses to callers.
+func (o *Orchestrator) ListRuntime(ctx context.Context) ([]RuntimeStatus, error) {
+	if o == nil {
+		return nil, errors.New("orchestrator is not configured")
+	}
+	if o.daemon == nil {
+		return nil, ErrDaemonUnavailable
+	}
+	return o.listJobs(ctx)
+}
+
+// InspectWorker returns the detailed state for a worker managed by the daemon.
+func (o *Orchestrator) InspectWorker(ctx context.Context, id string) (*daemon.WorkerDetails, error) {
+	if o == nil {
+		return nil, errors.New("orchestrator is not configured")
+	}
+	return o.inspectJob(ctx, id)
 }
 
 // Run starts the reconciliation loop and blocks until the context is cancelled.
@@ -78,7 +193,7 @@ func (o *Orchestrator) reconcile(ctx context.Context) error {
 		return fmt.Errorf("reload ledger: %w", err)
 	}
 	records := o.ledger.List()
-	statuses, err := o.runner.List(ctx)
+	statuses, err := o.listJobs(ctx)
 	if err != nil {
 		return fmt.Errorf("list runtime state: %w", err)
 	}
@@ -168,7 +283,7 @@ func (o *Orchestrator) maybeStart(ctx context.Context, rec *Record) error {
 	if err := opts.Validate(); err != nil {
 		return err
 	}
-	if _, err := o.runner.Start(ctx, opts); err != nil {
+	if _, err := o.startJob(ctx, opts); err != nil {
 		return err
 	}
 	startTime := time.Now().UTC()
@@ -188,7 +303,7 @@ func (o *Orchestrator) ensureStopped(ctx context.Context, rec *Record, status Ru
 		return errors.New("record is nil")
 	}
 	if exists && status.Running {
-		if err := o.runner.Stop(ctx, rec.ID); err != nil {
+		if err := o.stopJob(ctx, rec.ID); err != nil {
 			return err
 		}
 		_, err := o.ledger.Update(rec.ID, func(r *Record) error {

@@ -9,8 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -19,9 +21,10 @@ import (
 	"github.com/cochaviz/bottle-warden/internal/analysis"
 	"github.com/cochaviz/bottle-warden/internal/api"
 	"github.com/cochaviz/bottle-warden/internal/appconfig"
-	"github.com/cochaviz/bottle-warden/internal/daemonclient"
 	"github.com/cochaviz/bottle-warden/internal/malwarebazaar"
 	"github.com/spf13/cobra"
+
+	"github.com/cochaviz/bottle/daemon"
 )
 
 var (
@@ -87,6 +90,23 @@ var clientStatusCmd = &cobra.Command{
 	},
 }
 
+var clientWorkersCmd = &cobra.Command{
+	Use:   "workers",
+	Short: "list daemon workers currently tracked by the orchestrator",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return clientListWorkers(clientServerURL)
+	},
+}
+
+var clientInspectWorkerCmd = &cobra.Command{
+	Use:   "inspect-worker <id>",
+	Short: "inspect a daemon worker via the orchestrator",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return clientInspectWorker(clientServerURL, args[0])
+	},
+}
+
 var clientDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "remove an analysis",
@@ -123,7 +143,14 @@ func init() {
 	serveCmd.Flags().StringVar(&serveConfigPath, "config", "", "path to YAML configuration file")
 
 	clientCmd.PersistentFlags().StringVar(&clientServerURL, "server", "http://127.0.0.1:8080", "bottle-warden API base URL")
-	clientCmd.AddCommand(clientStatusCmd, clientDeleteCmd, clientAddCmd, clientAddBulkCmd)
+	clientCmd.AddCommand(
+		clientStatusCmd,
+		clientWorkersCmd,
+		clientInspectWorkerCmd,
+		clientDeleteCmd,
+		clientAddCmd,
+		clientAddBulkCmd,
+	)
 
 	clientAddCmd.Flags().StringVar(&clientAddSampleID, "sample", "", "sample identifier (required)")
 	clientAddCmd.Flags().StringVar(&clientAddSamplePath, "path", "", "local sample path")
@@ -181,20 +208,25 @@ func runServer(logger *slog.Logger, listenAddr, ledgerPath, daemonSocket string,
 	if strings.TrimSpace(sampleDir) == "" {
 		sampleDir = "data/samples"
 	}
+	absSampleDir, err := filepath.Abs(sampleDir)
+	if err != nil {
+		logger.Error("failed to resolve sample directory", "dir", sampleDir, "error", err)
+		os.Exit(1)
+	}
+	sampleDir = absSampleDir
 	if err := os.MkdirAll(sampleDir, 0o755); err != nil {
 		logger.Error("failed to prepare sample directory", "dir", sampleDir, "error", err)
 		os.Exit(1)
 	}
 
-	var runner analysis.Runner
+	var daemonClient *daemon.Client
 	if strings.TrimSpace(daemonSocket) != "" {
-		runner = daemonclient.New(daemonSocket, logger)
+		daemonClient = daemon.NewClient(daemonSocket)
 	} else {
-		runner = analysis.DryRunner{}
-		logger.Warn("daemon socket not configured, falling back to dry-run runner")
+		logger.Warn("daemon socket not configured, running in dry-run mode")
 	}
 
-	orchestrator := analysis.NewOrchestrator(ledger, runner, analysis.OrchestratorConfig{
+	orchestrator := analysis.NewOrchestrator(ledger, daemonClient, analysis.OrchestratorConfig{
 		PollInterval: pollInterval,
 		Logger:       logger,
 	})
@@ -339,9 +371,120 @@ func clientDelete(baseURL, id string) error {
 	return nil
 }
 
+func clientListWorkers(baseURL string) error {
+	resp, err := http.Get(strings.TrimRight(baseURL, "/") + "/workers")
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("list workers failed: %s", strings.TrimSpace(string(body)))
+	}
+	var workers []analysis.RuntimeStatus
+	if err := json.NewDecoder(resp.Body).Decode(&workers); err != nil {
+		return err
+	}
+	if len(workers) == 0 {
+		fmt.Println("No daemon workers.")
+		return nil
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "ID\tSAMPLE\tC2\tSTARTED\tRUNNING\tERROR")
+	for _, worker := range workers {
+		c2 := worker.C2IP
+		if c2 == "" {
+			c2 = "-"
+		}
+		start := "-"
+		if !worker.StartedAt.IsZero() {
+			start = worker.StartedAt.Format(time.RFC3339)
+		}
+		errMsg := worker.Error
+		if errMsg == "" {
+			errMsg = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%t\t%s\n",
+			worker.ID, worker.Sample, c2, start, worker.Running, errMsg)
+	}
+	w.Flush()
+	return nil
+}
+
+func clientInspectWorker(baseURL, workerID string) error {
+	id := strings.TrimSpace(workerID)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	endpoint := fmt.Sprintf("%s/workers/%s", strings.TrimRight(baseURL, "/"), url.PathEscape(id))
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("inspect worker failed: %s", strings.TrimSpace(string(body)))
+	}
+	var detail daemon.WorkerDetails
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return err
+	}
+	status := detail.Status
+	fmt.Printf("ID:\t%s\n", status.ID)
+	fmt.Printf("Sample:\t%s\n", status.Sample)
+	if strings.TrimSpace(status.C2Ip) != "" {
+		fmt.Printf("C2:\t%s\n", status.C2Ip)
+	}
+	if !status.StartedAt.IsZero() {
+		fmt.Printf("Started:\t%s\n", status.StartedAt.Format(time.RFC3339))
+	}
+	if status.CompletedAt != nil {
+		fmt.Printf("Completed:\t%s\n", status.CompletedAt.Format(time.RFC3339))
+	}
+	fmt.Printf("Running:\t%t\n", status.Running)
+	if strings.TrimSpace(status.Error) != "" {
+		fmt.Printf("Error:\t%s\n", status.Error)
+	}
+	if detail.Duration > 0 {
+		fmt.Printf("Runtime:\t%s\n", detail.Duration)
+	}
+	opts := detail.Options
+	fmt.Println("Options:")
+	printOption := func(key, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		fmt.Printf("  %s: %s\n", key, value)
+	}
+	printDuration := func(key string, value time.Duration) {
+		if value <= 0 {
+			return
+		}
+		fmt.Printf("  %s: %s\n", key, value)
+	}
+	if len(opts.SampleArgs) > 0 {
+		fmt.Printf("  SampleArgs: %s\n", strings.Join(opts.SampleArgs, " "))
+	}
+	printOption("SamplePath", opts.SamplePath)
+	printOption("C2Address", opts.C2Address)
+	printOption("ImageDir", opts.ImageDir)
+	printOption("RunDir", opts.RunDir)
+	printOption("ConnectionURI", opts.ConnectionURI)
+	printOption("OverrideArch", opts.OverrideArch)
+	printOption("Instrumentation", opts.Instrumentation)
+	printOption("LogLevel", opts.LogLevel)
+	printDuration("SampleTimeout", opts.SampleTimeout)
+	printDuration("SandboxLifetime", opts.SandboxLifetime)
+	return nil
+}
+
 func clientAdd(baseURL, sampleID, samplePath, sourceHash, c2, instrumentation string) error {
 	if strings.TrimSpace(sampleID) == "" {
 		return errors.New("sample is required")
+	}
+	if strings.TrimSpace(samplePath) == "" && strings.TrimSpace(sourceHash) == "" {
+		return errors.New("either --path or --hash must be provided")
 	}
 	body := map[string]interface{}{
 		"sample_id":       sampleID,

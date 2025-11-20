@@ -76,6 +76,8 @@ func (s *Server) Run(ctx context.Context) error {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/analyses", s.handleAnalysesRoot)
 	mux.HandleFunc("/analyses/", s.handleAnalysesSubpath)
+	mux.HandleFunc("/workers", s.handleWorkersRoot)
+	mux.HandleFunc("/workers/", s.handleWorkersSubpath)
 
 	srv := &http.Server{
 		Addr:    s.addr,
@@ -145,9 +147,58 @@ func (s *Server) handleAnalysesSubpath(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleWorkersRoot(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/workers" {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		s.handleListWorkers(w, r)
+	default:
+		s.methodNotAllowed(w, http.MethodGet)
+	}
+}
+
+func (s *Server) handleWorkersSubpath(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/workers/")
+	if path == "" {
+		s.handleWorkersRoot(w, r)
+		return
+	}
+	chunks := strings.Split(strings.Trim(path, "/"), "/")
+	if len(chunks) != 1 || chunks[0] == "" {
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		s.handleInspectWorker(w, r, chunks[0])
+	default:
+		s.methodNotAllowed(w, http.MethodGet)
+	}
+}
+
 func (s *Server) handleListAnalyses(w http.ResponseWriter, r *http.Request) {
 	records := s.ledger.List()
 	s.respondJSON(w, http.StatusOK, records)
+}
+
+func (s *Server) handleListWorkers(w http.ResponseWriter, r *http.Request) {
+	if s.orchestrator == nil {
+		s.respondError(w, http.StatusServiceUnavailable, errors.New("orchestrator is not configured"))
+		return
+	}
+	statuses, err := s.orchestrator.ListRuntime(r.Context())
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if errors.Is(err, analysis.ErrDaemonUnavailable) {
+			statusCode = http.StatusServiceUnavailable
+		}
+		s.respondError(w, statusCode, err)
+		return
+	}
+	s.respondJSON(w, http.StatusOK, statuses)
 }
 
 type createRequest struct {
@@ -409,6 +460,27 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			"analyses": created,
 		})
 	}
+}
+
+func (s *Server) handleInspectWorker(w http.ResponseWriter, r *http.Request, id string) {
+	if s.orchestrator == nil {
+		s.respondError(w, http.StatusServiceUnavailable, errors.New("orchestrator is not configured"))
+		return
+	}
+	if strings.TrimSpace(id) == "" {
+		s.respondError(w, http.StatusBadRequest, errors.New("id is required"))
+		return
+	}
+	detail, err := s.orchestrator.InspectWorker(r.Context(), id)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if errors.Is(err, analysis.ErrDaemonUnavailable) {
+			statusCode = http.StatusServiceUnavailable
+		}
+		s.respondError(w, statusCode, err)
+		return
+	}
+	s.respondJSON(w, http.StatusOK, detail)
 }
 
 func (s *Server) respondJSON(w http.ResponseWriter, status int, payload interface{}) {
