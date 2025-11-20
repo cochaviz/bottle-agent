@@ -139,6 +139,8 @@ func (c *Client) call(ctx context.Context, req ipcRequest) (*ipcResponse, error)
 	}
 	defer conn.Close()
 
+	c.logger.Debug("daemon request", "command", req.Command, "id", req.ID, "payload", req.Payload)
+
 	if err := json.NewEncoder(conn).Encode(req); err != nil {
 		return nil, fmt.Errorf("encode request: %w", err)
 	}
@@ -147,6 +149,8 @@ func (c *Client) call(ctx context.Context, req ipcRequest) (*ipcResponse, error)
 	if err := json.NewDecoder(conn).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
+
+	c.logger.Debug("daemon response", "command", req.Command, "ok", resp.OK, "error", resp.Error, "data", string(resp.Data))
 	if !resp.OK {
 		if resp.Error == "" {
 			resp.Error = "daemon returned failure"

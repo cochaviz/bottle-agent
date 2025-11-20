@@ -9,7 +9,7 @@ collect forensic data without babysitting the bottle daemon.
 
 > Note that the `bottle-agent` more of an experiment than a production-ready
   tool. Most of this code base is generated and thus not perfectly vetted. I
-  have plans to rewrite it 
+  have plans to rewrite it in Elixir for easy scalability and reliability.
 
 ## Capabilities
 
