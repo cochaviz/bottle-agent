@@ -1,20 +1,20 @@
-# bottle-agent
+# bottle-warden
 
-`bottle-agent` is the orchestration and monitoring layer that sits on top of a
+`bottle-warden` is the orchestration and monitoring layer that sits on top of a
 [`bottle`](https://github.com/cochaviz/bottle) deployment. It keeps a ledger of
 analyses, submits runs to the bottle daemon, watches Suricata logs for C2
 activity, and optionally ingests new samples from MalwareBazaar. Use it when you
 need to keep long-running sandboxes alive, automatically requeue samples, and
 collect forensic data without babysitting the bottle daemon.
 
-> Note that the `bottle-agent` more of an experiment than a production-ready
+> Note that the `bottle-warden` more of an experiment than a production-ready
   tool. Most of this code base is generated and thus not perfectly vetted. I
   have plans to rewrite it in Elixir for easy scalability and reliability.
 
 ## Capabilities
 
 - **REST API + CLI client** – submit, list, update, delete, and batch analyses
-  through `/analyses` endpoints or the bundled `bottle-agent client` subcommand.
+  through `/analyses` endpoints or the bundled `bottle-warden client` subcommand.
 - **Ledger-driven orchestration** – JSON-lines ledger tracks desired state;
   orchestrator reconciles it against the running bottle daemon so analyses
   survive restarts.
@@ -41,11 +41,11 @@ collect forensic data without babysitting the bottle daemon.
 ### Steps
 
 ```shell
-git clone https://github.com/cochaviz/bottle-agent.git
-cd bottle-agent
-go install .               # installs $GOBIN/bottle-agent
+git clone https://github.com/cochaviz/bottle-warden.git
+cd bottle-warden
+go install .               # installs $GOBIN/bottle-warden
 # or
-go build -o bottle-agent . # builds local binary in the repo
+go build -o bottle-warden . # builds local binary in the repo
 cp config.example.yaml config.yaml  # and edit to match your environment
 ```
 
@@ -62,7 +62,7 @@ Inside `config.yaml`:
 ### Serving the API / orchestrator
 
 ```shell
-./bottle-agent serve \
+./bottle-warden serve \
   -listen ":8080" \
   -ledger data/ledger.jsonl \
   -daemon-socket /var/run/bottle/daemon.sock \
@@ -76,12 +76,12 @@ Inside `config.yaml`:
 ### CLI client
 
 ```shell
-./bottle-agent client status                    # list analyses
-./bottle-agent client add -sample foo -path sample.exe
-./bottle-agent client add -sample bar -hash <sha256>
-./bottle-agent client delete <id>
-./bottle-agent client add-bulk -dir /path/to/samples
-./bottle-agent client add-bulk -hashes hash1,hash2
+./bottle-warden client status                    # list analyses
+./bottle-warden client add -sample foo -path sample.exe
+./bottle-warden client add -sample bar -hash <sha256>
+./bottle-warden client delete <id>
+./bottle-warden client add-bulk -dir /path/to/samples
+./bottle-warden client add-bulk -hashes hash1,hash2
 ```
 
 Use `-server http://host:port` for remote agents (defaults to
@@ -90,7 +90,7 @@ Use `-server http://host:port` for remote agents (defaults to
 ### Running alongside bottle
 
 1. Start the bottle daemon with your preferred instrumentation set.
-2. Launch `bottle-agent serve …` on the same host, pointing `-daemon-socket` at
+2. Launch `bottle-warden serve …` on the same host, pointing `-daemon-socket` at
    the bottle daemon socket.
 3. Interact via the REST API or CLI client; the orchestrator translates entries
    into `start_analysis` / `stop_analysis` commands.
@@ -100,11 +100,11 @@ Use `-server http://host:port` for remote agents (defaults to
 ### Example systemd service
 
 You can let systemd keep the orchestrator online by dropping a unit such as
-`/etc/systemd/system/bottle-agent.service`:
+`/etc/systemd/system/bottle-warden.service`:
 
 ```ini
 [Unit]
-Description=bottle-agent orchestrator
+Description=bottle-warden orchestrator
 Wants=network-online.target
 After=network-online.target
 After=suricata.service bottle-daemon.service
@@ -113,13 +113,13 @@ After=suricata.service bottle-daemon.service
 Type=simple
 User=root
 Group=root
-WorkingDirectory=/opt/bottle-agent
-EnvironmentFile=-/etc/default/bottle-agent
-ExecStart=/root/go/bin/bottle-agent serve \
+WorkingDirectory=/opt/bottle-warden
+EnvironmentFile=-/etc/default/bottle-warden
+ExecStart=/root/go/bin/bottle-warden serve \
     -listen ":8080" \
-    -ledger /opt/bottle-agent/data/ledger.jsonl \
+    -ledger /opt/bottle-warden/data/ledger.jsonl \
     -daemon-socket /var/run/bottle/daemon.sock \
-    -config /opt/bottle-agent/config.yaml
+    -config /opt/bottle-warden/config.yaml
 Restart=on-failure
 RestartSec=5s
 
@@ -131,7 +131,7 @@ WantedBy=multi-user.target
   your install layout (the `EnvironmentFile` is optional but convenient for
   passing credentials such as `MALWAREBAZAAR_API_KEY`).
 - Reload systemd (`sudo systemctl daemon-reload`) and enable the unit
-  (`sudo systemctl enable --now bottle-agent.service`) to have the agent start
+  (`sudo systemctl enable --now bottle-warden.service`) to have the agent start
   immediately and on future boots.
 
 ## Design Details (Deep Dive)
@@ -248,19 +248,19 @@ new samples on MalwareBazaar (checks once every hour) that are then analyzed.
 For quick reference, the legacy commands remain valid:
 
 ```shell
-go build -o bottle-agent .
-./bottle-agent serve -listen ":8080" -ledger data/ledger.jsonl -daemon-socket /var/run/bottle/daemon.sock -config config.yaml
-./bottle-agent client status
-./bottle-agent client add ...
+go build -o bottle-warden .
+./bottle-warden serve -listen ":8080" -ledger data/ledger.jsonl -daemon-socket /var/run/bottle/daemon.sock -config config.yaml
+./bottle-warden client status
+./bottle-warden client add ...
 ```
 
-The modern `bottle-agent` binary simply inlines these commands.
+The modern `bottle-warden` binary simply inlines these commands.
 
 ### Running Alongside bottle
 
 1. Start the bottle daemon (refer to the bottle README) ensuring it can access
    your VM definitions and instrumentation profiless.
-2. Launch `bottle-agent serve …` on the same host, pointing `-daemon-socket` at the
+2. Launch `bottle-warden serve …` on the same host, pointing `-daemon-socket` at the
    bottle daemon’s unix socket.
 3. Submit jobs via the REST API or the CLI client. The orchestrator will call
    `start_analysis` / `stop_analysis` on the daemon as needed while keeping the

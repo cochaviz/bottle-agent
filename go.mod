@@ -1,4 +1,4 @@
-module github.com/cochaviz/bottle-agent
+module github.com/cochaviz/bottle-warden
 
 go 1.24.4
 

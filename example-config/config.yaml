@@ -17,7 +17,7 @@ malwarebazaar:
     watcher:
         enabled: true
         watch_interval: 1h
-        instrumentation: /opt/bottle-agent/instrumentation/default.yaml
+        instrumentation: /opt/bottle-warden/instrumentation/default.yaml
         sample_timeout: 2m
         sandbox_timeout: 3m
         lookback_hours: 1

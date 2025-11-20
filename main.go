@@ -16,11 +16,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/cochaviz/bottle-agent/internal/analysis"
-	"github.com/cochaviz/bottle-agent/internal/api"
-	"github.com/cochaviz/bottle-agent/internal/appconfig"
-	"github.com/cochaviz/bottle-agent/internal/daemonclient"
-	"github.com/cochaviz/bottle-agent/internal/malwarebazaar"
+	"github.com/cochaviz/bottle-warden/internal/analysis"
+	"github.com/cochaviz/bottle-warden/internal/api"
+	"github.com/cochaviz/bottle-warden/internal/appconfig"
+	"github.com/cochaviz/bottle-warden/internal/daemonclient"
+	"github.com/cochaviz/bottle-warden/internal/malwarebazaar"
 	"github.com/spf13/cobra"
 )
 
@@ -45,8 +45,8 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "bottle-agent",
-	Short: "bottle-agent orchestration and monitoring tooling",
+	Use:   "bottle-warden",
+	Short: "bottle-warden orchestration and monitoring tooling",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		level, err := parseLogLevel(logLevelFlag)
 		if err != nil {
@@ -64,7 +64,7 @@ var rootLogger *slog.Logger
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "run the bottle-agent orchestrator, server, and monitoring stack",
+	Short: "run the bottle-warden orchestrator, server, and monitoring stack",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		runServer(rootLogger, serveListen, serveLedgerPath, serveDaemonSocket, servePollInterval, serveConfigPath)
 		return nil
@@ -73,7 +73,7 @@ var serveCmd = &cobra.Command{
 
 var clientCmd = &cobra.Command{
 	Use:   "client",
-	Short: "interact with the running bottle-agent service",
+	Short: "interact with the running bottle-warden service",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -122,7 +122,7 @@ func init() {
 	serveCmd.Flags().DurationVar(&servePollInterval, "poll", 5*time.Second, "orchestrator poll interval")
 	serveCmd.Flags().StringVar(&serveConfigPath, "config", "", "path to YAML configuration file")
 
-	clientCmd.PersistentFlags().StringVar(&clientServerURL, "server", "http://127.0.0.1:8080", "bottle-agent API base URL")
+	clientCmd.PersistentFlags().StringVar(&clientServerURL, "server", "http://127.0.0.1:8080", "bottle-warden API base URL")
 	clientCmd.AddCommand(clientStatusCmd, clientDeleteCmd, clientAddCmd, clientAddBulkCmd)
 
 	clientAddCmd.Flags().StringVar(&clientAddSampleID, "sample", "", "sample identifier (required)")
