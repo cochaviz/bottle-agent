@@ -41,6 +41,7 @@ type MalwareBazaarWatcherConfig struct {
 	SampleTimeout   time.Duration `yaml:"sample_timeout"`
 	SandboxTimeout  time.Duration `yaml:"sandbox_timeout"`
 	Tags            []string      `yaml:"tags"`
+	LookbackHours   int           `yaml:"lookback_hours"`
 }
 
 // AlertRule configures the inactivity timeout for a particular SID.
@@ -105,6 +106,12 @@ func (m *MalwareBazaarConfig) normalize() {
 func (w *MalwareBazaarWatcherConfig) normalize() {
 	if w.WatchInterval <= 0 {
 		w.WatchInterval = time.Hour
+	}
+	if w.LookbackHours <= 0 {
+		w.LookbackHours = 48
+	}
+	if w.LookbackHours > 168 {
+		w.LookbackHours = 168
 	}
 	for i, tag := range w.Tags {
 		w.Tags[i] = strings.ToLower(strings.TrimSpace(tag))

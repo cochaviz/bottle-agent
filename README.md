@@ -7,9 +7,9 @@ activity, and optionally ingests new samples from MalwareBazaar. Use it when you
 need to keep long-running sandboxes alive, automatically requeue samples, and
 collect forensic data without babysitting the bottle daemon.
 
-This document is organized so the most important pieces (capabilities, install,
-usage) come first; the design notes that follow provide deeper context when
-needed.
+> Note that the `bottle-agent` more of an experiment than a production-ready
+  tool. Most of this code base is generated and thus not perfectly vetted. I
+  have plans to rewrite it 
 
 ## Capabilities
 
