@@ -73,7 +73,11 @@ func (o *Orchestrator) startJob(ctx context.Context, opts StartOptions) (string,
 		}
 		return opts.ID, nil
 	}
-	return o.daemon.StartAnalysis(opts.toDaemonRequest())
+	req, err := opts.toDaemonRequest()
+	if err != nil {
+		return "", err
+	}
+	return o.daemon.StartAnalysis(req)
 }
 
 // stopJob requests the daemon to stop a running job.

@@ -3,6 +3,7 @@ package analysis
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,13 +35,25 @@ func (o StartOptions) Validate() error {
 	return nil
 }
 
-func (o StartOptions) toDaemonRequest() daemon.StartAnalysisRequest {
+func (o StartOptions) toDaemonRequest() (daemon.StartAnalysisRequest, error) {
+	samplePath, err := absolutePath(o.SamplePath)
+	if err != nil {
+		return daemon.StartAnalysisRequest{}, fmt.Errorf("resolve sample path: %w", err)
+	}
+	imageDir, err := absolutePath(o.ImageDir)
+	if err != nil {
+		return daemon.StartAnalysisRequest{}, fmt.Errorf("resolve image dir: %w", err)
+	}
+	runDir, err := absolutePath(o.RunDir)
+	if err != nil {
+		return daemon.StartAnalysisRequest{}, fmt.Errorf("resolve run dir: %w", err)
+	}
 	return daemon.StartAnalysisRequest{
 		ID:              o.ID,
-		SamplePath:      o.SamplePath,
+		SamplePath:      samplePath,
 		C2Address:       o.C2Address,
-		ImageDir:        o.ImageDir,
-		RunDir:          o.RunDir,
+		ImageDir:        imageDir,
+		RunDir:          runDir,
 		ConnectionURI:   o.ConnectionURI,
 		OverrideArch:    o.OverrideArch,
 		SampleArgs:      append([]string{}, o.SampleArgs...),
@@ -48,9 +61,20 @@ func (o StartOptions) toDaemonRequest() daemon.StartAnalysisRequest {
 		SampleTimeout:   o.SampleTimeout,
 		SandboxLifetime: o.SandboxTimeout,
 		LogLevel:        o.LogLevel,
-	}
+	}, nil
 }
 
 func generateDryRunID() string {
 	return fmt.Sprintf("dry-%d", time.Now().UnixNano())
+}
+
+func absolutePath(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return "", err
+	}
+	return abs, nil
 }
