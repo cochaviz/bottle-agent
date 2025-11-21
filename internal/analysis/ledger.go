@@ -162,7 +162,7 @@ func (l *Ledger) Remove(id string, allowFailed bool) error {
 	if !ok {
 		return fmt.Errorf("analysis %q not found", id)
 	}
-	if rec.State.Active() || rec.State == StateStale || rec.State == StateStopping {
+	if rec.State.Active() || rec.State == StateStale {
 		return fmt.Errorf("analysis %s is still active (%s)", id, rec.State)
 	}
 	if rec.State == StateFailed && !allowFailed {
@@ -328,7 +328,7 @@ func (l *Ledger) enforceSampleConstraintsLocked(candidate *Record) error {
 		if !rec.MatchesSampleConstraint(candidate.SampleID, candidate.C2Address) {
 			continue
 		}
-		if rec.State.Active() || candidate.State.Active() {
+		if rec.State.Active() || rec.State == StateStale {
 			return fmt.Errorf("sample %s already active in analysis %s", candidate.SampleID, id)
 		}
 		if rec.C2Address == candidate.C2Address && candidate.C2Address != "" && !rec.State.Terminal() {
