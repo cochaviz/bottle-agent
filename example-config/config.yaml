@@ -1,14 +1,12 @@
 monitoring:
     enabled: true
     eve_path: /var/log/suricata/eve.json
-    check_interval: 30s
+    check_interval: 35s # slightly larger than default gomon timewindow of 30s
     default_timeout: 2m
-    analysis_timeout: 15m
+    analysis_timeout: 0 # disable analysis timeout
     alerts:
-        - sid: 200001
-          timeout: 5m
-        - sid: 200010
-          timeout: 2m
+        - sid: 1000011 # C2 Traffic: C2 Communicates with Sandbox (PSH)
+          timeout: 10m
 malwarebazaar:
     enabled: true
     api_key: ""

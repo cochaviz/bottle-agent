@@ -120,8 +120,8 @@ type Record struct {
 	C2Address       string               `json:"c2_address,omitempty"`
 	Instrumentation string               `json:"instrumentation,omitempty"`
 	SampleArgs      []string             `json:"sample_args,omitempty"`
-	SampleTimeout   Duration             `json:"sample_timeout,omitempty"`
-	SandboxTimeout  Duration             `json:"sandbox_timeout,omitempty"`
+	SampleTimeout   Duration             `json:"sample_timeout"`
+	SandboxTimeout  Duration             `json:"sandbox_timeout"`
 	BatchID         string               `json:"batch_id,omitempty"`
 	BatchPosition   int                  `json:"batch_position,omitempty"`
 	State           State                `json:"state"`
@@ -130,7 +130,7 @@ type Record struct {
 	Source          SourceSpec           `json:"source"`
 	CreatedAt       time.Time            `json:"created_at"`
 	UpdatedAt       time.Time            `json:"updated_at"`
-	StartedAt       time.Time            `json:"started_at,omitempty"`
+	StartedAt       time.Time            `json:"started_at"`
 	LastAlertTimes  map[string]time.Time `json:"last_alert_times,omitempty"`
 	Notes           string               `json:"notes,omitempty"`
 }

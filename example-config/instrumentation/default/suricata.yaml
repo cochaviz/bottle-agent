@@ -43,6 +43,7 @@ outputs:
         - alert:
         - dns
         - stats
+        - flow
 {{- end }}
 
 # logging: keep concise (inherit other defaults)
