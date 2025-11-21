@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 )
@@ -199,6 +200,30 @@ func (r *Record) MarkStale() {
 			return
 		}
 		r.State = StateStale
+	}
+}
+
+// MarkRestart updates the record so the orchestrator will restart it.
+func (r *Record) MarkRestart() {
+	if r == nil {
+		return
+	}
+	stoppedStates := []State{StateStopped, StateStale, StateFailed}
+
+	if slices.Contains(stoppedStates, r.State) {
+		r.State = StateQueued
+
+		// clear other data
+		r.StartedAt = time.Time{}
+		r.LastAlertTimes = nil
+		r.LastError = ""
+
+		if r.Metadata != nil {
+			delete(r.Metadata, "stale_reason")
+			if len(r.Metadata) == 0 {
+				r.Metadata = nil
+			}
+		}
 	}
 }
 

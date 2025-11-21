@@ -322,7 +322,7 @@ func (s *Server) handleUpdateAnalysis(w http.ResponseWriter, r *http.Request, id
 		if req.State != nil {
 			switch *req.State {
 			case analysis.StateQueued:
-				rec.State = analysis.StateQueued
+				rec.MarkRestart()
 			case analysis.StateStale:
 				rec.State = analysis.StateStale
 			case analysis.StateStopped:

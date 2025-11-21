@@ -36,15 +36,15 @@ var (
 	servePollInterval time.Duration
 	serveConfigPath   string
 
-	clientServerURL              string
-	clientAddSampleID            string
-	clientAddSamplePath          string
-	clientAddSourceHash          string
-	clientAddC2Address           string
-	clientAddInstrumentation     string
-	clientAddBulkDir             string
-	clientAddBulkHashes          string
-	clientAddBulkInstrumentation string
+	apiServerURL           string
+	addSampleID            string
+	addSamplePath          string
+	addSourceHash          string
+	addC2Address           string
+	addInstrumentation     string
+	addBulkDir             string
+	addBulkHashes          string
+	addBulkInstrumentation string
 )
 
 var rootCmd = &cobra.Command{
@@ -74,67 +74,89 @@ var serveCmd = &cobra.Command{
 	},
 }
 
-var clientCmd = &cobra.Command{
-	Use:   "client",
-	Short: "interact with the running bottle-warden service",
+var analysisCmd = &cobra.Command{
+	Use:   "analysis",
+	Short: "manage analyses",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
 }
 
-var clientStatusCmd = &cobra.Command{
-	Use:   "status",
+var analysisListCmd = &cobra.Command{
+	Use:   "list",
 	Short: "list analyses in the agent ledger",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientStatus(clientServerURL)
+		return clientStatus(apiServerURL)
 	},
 }
 
-var clientWorkersCmd = &cobra.Command{
-	Use:   "workers",
-	Short: "list daemon workers currently tracked by the orchestrator",
+var analysisAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "enqueue a single analysis",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientListWorkers(clientServerURL)
+		return clientAdd(apiServerURL, addSampleID, addSamplePath, addSourceHash, addC2Address, addInstrumentation)
 	},
 }
 
-var clientInspectWorkerCmd = &cobra.Command{
-	Use:   "inspect-worker <id>",
-	Short: "inspect a daemon worker via the orchestrator",
-	Args:  cobra.ExactArgs(1),
+var analysisAddBulkCmd = &cobra.Command{
+	Use:   "add-bulk",
+	Short: "enqueue multiple analyses from a directory or hash list",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientInspectWorker(clientServerURL, args[0])
+		return clientAddBulk(apiServerURL, addBulkDir, addBulkHashes, addBulkInstrumentation)
 	},
 }
 
-var clientDeleteCmd = &cobra.Command{
+var analysisDeleteCmd = &cobra.Command{
 	Use:   "delete <id>",
 	Short: "remove an analysis",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientDelete(clientServerURL, args[0])
+		return clientDelete(apiServerURL, args[0])
 	},
 }
 
-var clientAddCmd = &cobra.Command{
-	Use:   "add",
-	Short: "enqueue a single analysis",
+var analysisRestartCmd = &cobra.Command{
+	Use:   "restart <id>",
+	Short: "restart (re-queue) an analysis",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientAdd(clientServerURL, clientAddSampleID, clientAddSamplePath, clientAddSourceHash, clientAddC2Address, clientAddInstrumentation)
+		return clientRestart(apiServerURL, args[0])
 	},
 }
 
-var clientAddBulkCmd = &cobra.Command{
-	Use:   "add-bulk",
-	Short: "enqueue multiple analyses from a directory or hash list",
+var workersCmd = &cobra.Command{
+	Use:   "workers",
+	Short: "inspect daemon workers",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientAddBulk(clientServerURL, clientAddBulkDir, clientAddBulkHashes, clientAddBulkInstrumentation)
+		return cmd.Help()
+	},
+}
+
+var workersListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "list daemon workers currently tracked by the orchestrator",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return clientListWorkers(apiServerURL)
+	},
+}
+
+var workersInspectCmd = &cobra.Command{
+	Use:   "inspect <id>",
+	Short: "inspect a daemon worker via the orchestrator",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return clientInspectWorker(apiServerURL, args[0])
 	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&logLevelFlag, "log-level", "info", "log level (debug, info, warn, error)")
-	rootCmd.AddCommand(serveCmd, clientCmd)
+	rootCmd.PersistentFlags().StringVar(&apiServerURL, "server", "http://127.0.0.1:8080", "bottle-warden API base URL")
+	rootCmd.AddCommand(
+		serveCmd,
+		workersCmd,
+		analysisCmd,
+	)
 
 	serveCmd.Flags().StringVar(&serveListen, "listen", ":8080", "HTTP listen address")
 	serveCmd.Flags().StringVar(&serveLedgerPath, "ledger", "data/ledger.jsonl", "ledger file path")
@@ -142,26 +164,29 @@ func init() {
 	serveCmd.Flags().DurationVar(&servePollInterval, "poll", 5*time.Second, "orchestrator poll interval")
 	serveCmd.Flags().StringVar(&serveConfigPath, "config", "", "path to YAML configuration file")
 
-	clientCmd.PersistentFlags().StringVar(&clientServerURL, "server", "http://127.0.0.1:8080", "bottle-warden API base URL")
-	clientCmd.AddCommand(
-		clientStatusCmd,
-		clientWorkersCmd,
-		clientInspectWorkerCmd,
-		clientDeleteCmd,
-		clientAddCmd,
-		clientAddBulkCmd,
+	analysisCmd.AddCommand(
+		analysisListCmd,
+		analysisAddCmd,
+		analysisAddBulkCmd,
+		analysisDeleteCmd,
+		analysisRestartCmd,
 	)
 
-	clientAddCmd.Flags().StringVar(&clientAddSampleID, "sample", "", "sample identifier (required)")
-	clientAddCmd.Flags().StringVar(&clientAddSamplePath, "path", "", "local sample path")
-	clientAddCmd.Flags().StringVar(&clientAddSourceHash, "hash", "", "MalwareBazaar hash to fetch")
-	clientAddCmd.Flags().StringVar(&clientAddC2Address, "c2", "", "C2 address")
-	clientAddCmd.Flags().StringVar(&clientAddInstrumentation, "instrumentation", "", "instrumentation profile")
-	_ = clientAddCmd.MarkFlagRequired("sample")
+	analysisAddCmd.Flags().StringVar(&addSampleID, "sample", "", "sample identifier (required)")
+	analysisAddCmd.Flags().StringVar(&addSamplePath, "path", "", "local sample path")
+	analysisAddCmd.Flags().StringVar(&addSourceHash, "hash", "", "MalwareBazaar hash to fetch")
+	analysisAddCmd.Flags().StringVar(&addC2Address, "c2", "", "C2 address")
+	analysisAddCmd.Flags().StringVar(&addInstrumentation, "instrumentation", "", "instrumentation profile")
+	_ = analysisAddCmd.MarkFlagRequired("sample")
 
-	clientAddBulkCmd.Flags().StringVar(&clientAddBulkDir, "dir", "", "directory of samples")
-	clientAddBulkCmd.Flags().StringVar(&clientAddBulkHashes, "hashes", "", "comma-separated hashes")
-	clientAddBulkCmd.Flags().StringVar(&clientAddBulkInstrumentation, "instrumentation", "", "instrumentation profile")
+	analysisAddBulkCmd.Flags().StringVar(&addBulkDir, "dir", "", "directory of samples")
+	analysisAddBulkCmd.Flags().StringVar(&addBulkHashes, "hashes", "", "comma-separated hashes")
+	analysisAddBulkCmd.Flags().StringVar(&addBulkInstrumentation, "instrumentation", "", "instrumentation profile")
+
+	workersCmd.AddCommand(
+		workersListCmd,
+		workersInspectCmd,
+	)
 }
 
 func main() {
@@ -518,6 +543,34 @@ func clientAdd(baseURL, sampleID, samplePath, sourceHash, c2, instrumentation st
 		return err
 	}
 	fmt.Println("Created analysis", created.ID)
+	return nil
+}
+
+func clientRestart(baseURL, id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return errors.New("id is required")
+	}
+	body := map[string]string{"state": string(analysis.StateQueued)}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, strings.TrimRight(baseURL, "/")+"/analyses/"+id, bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("restart failed: %s", strings.TrimSpace(string(body)))
+	}
+	fmt.Println("Restarted analysis", id)
 	return nil
 }
 
