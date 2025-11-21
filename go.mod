@@ -9,6 +9,7 @@ require (
 	github.com/spf13/cobra v1.10.1
 	github.com/swaggo/swag v1.16.6
 	gopkg.in/yaml.v3 v3.0.1
+	github.com/go-chi/cors v1.22
 )
 
 require (

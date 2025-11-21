@@ -20,6 +20,8 @@ import (
 	"github.com/cochaviz/bottle/daemon"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/go-chi/cors"
 )
 
 // @title bottle-warden API
@@ -110,6 +112,14 @@ func (s *Server) Run(ctx context.Context) error {
 func (s *Server) buildRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.StripSlashes)
+
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"*"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Allow-Failed"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+	}))
 
 	r.Get("/health", s.handleHealth)
 	r.Route("/analyses", func(r chi.Router) {
