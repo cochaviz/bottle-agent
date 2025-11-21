@@ -153,8 +153,9 @@ func (l *Ledger) Update(id string, mutate func(*Record) error) (*Record, error) 
 	return clone.Clone(), nil
 }
 
-// Remove deletes a record once it is no longer active.
-func (l *Ledger) Remove(id string) error {
+// Remove deletes a record once it is no longer active. If allowFailed is true,
+// failed analyses may be removed as well.
+func (l *Ledger) Remove(id string, allowFailed bool) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	rec, ok := l.entries[id]
@@ -164,9 +165,44 @@ func (l *Ledger) Remove(id string) error {
 	if rec.State.Active() || rec.State == StateStale || rec.State == StateStopping {
 		return fmt.Errorf("analysis %s is still active (%s)", id, rec.State)
 	}
+	if rec.State == StateFailed && !allowFailed {
+		return fmt.Errorf("analysis %s failed; use allowFailed to delete", id)
+	}
 	delete(l.entries, id)
 	l.order = slices.DeleteFunc(l.order, func(entryID string) bool { return entryID == id })
 	return l.persistLocked()
+}
+
+// RemoveByState deletes all records matching the provided state. Active states
+// are rejected.
+func (l *Ledger) RemoveByState(state State) (int, error) {
+	if state == "" {
+		return 0, errors.New("state is required")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	deleted := 0
+	newOrder := make([]string, 0, len(l.order))
+	for _, id := range l.order {
+		rec := l.entries[id]
+		if rec == nil || rec.State != state {
+			newOrder = append(newOrder, id)
+			continue
+		}
+		if rec.State.Active() || rec.State == StateStale || rec.State == StateStopping {
+			return deleted, fmt.Errorf("analysis %s is still active (%s)", id, rec.State)
+		}
+		delete(l.entries, id)
+		deleted++
+	}
+	l.order = newOrder
+	if deleted == 0 {
+		return 0, nil
+	}
+	if err := l.persistLocked(); err != nil {
+		return deleted, err
+	}
+	return deleted, nil
 }
 
 // HasBatchPredecessor indicates whether another record from the same batch

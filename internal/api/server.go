@@ -112,8 +112,10 @@ func (s *Server) handleAnalysesRoot(w http.ResponseWriter, r *http.Request) {
 		s.handleListAnalyses(w, r)
 	case http.MethodPost:
 		s.handleCreateAnalysis(w, r)
+	case http.MethodDelete:
+		s.handleDeleteAnalyses(w, r)
 	default:
-		s.methodNotAllowed(w, http.MethodGet, http.MethodPost)
+		s.methodNotAllowed(w, http.MethodGet, http.MethodPost, http.MethodDelete)
 	}
 }
 
@@ -346,12 +348,35 @@ func (s *Server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request, id
 		s.respondError(w, http.StatusBadRequest, errors.New("id is required"))
 		return
 	}
-	if err := s.ledger.Remove(id); err != nil {
+	allowFailed := strings.EqualFold(r.Header.Get("X-Allow-Failed"), "true")
+	if err := s.ledger.Remove(id, allowFailed); err != nil {
 		s.respondError(w, http.StatusBadRequest, err)
 		return
 	}
 	s.bump()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleDeleteAnalyses(w http.ResponseWriter, r *http.Request) {
+	stateParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("state")))
+	if stateParam == "" {
+		s.respondError(w, http.StatusBadRequest, errors.New("state query parameter is required"))
+		return
+	}
+	if stateParam != string(analysis.StateFailed) {
+		s.respondError(w, http.StatusBadRequest, fmt.Errorf("unsupported delete filter %q (only \"failed\" supported)", stateParam))
+		return
+	}
+	deleted, err := s.ledger.RemoveByState(analysis.StateFailed)
+	if err != nil {
+		s.respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.bump()
+	s.respondJSON(w, http.StatusOK, map[string]any{
+		"deleted": deleted,
+		"state":   stateParam,
+	})
 }
 
 type batchRequest struct {

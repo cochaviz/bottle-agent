@@ -45,6 +45,7 @@ var (
 	addBulkDir             string
 	addBulkHashes          string
 	addBulkInstrumentation string
+	deleteFailedFlag       bool
 )
 
 var rootCmd = &cobra.Command{
@@ -108,11 +109,20 @@ var analysisAddBulkCmd = &cobra.Command{
 }
 
 var analysisDeleteCmd = &cobra.Command{
-	Use:   "delete <id>",
-	Short: "remove an analysis",
-	Args:  cobra.ExactArgs(1),
+	Use:   "delete [id]",
+	Short: "remove an analysis or all failed analyses",
+	Args:  cobra.ArbitraryArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientDelete(apiServerURL, args[0])
+		if deleteFailedFlag {
+			if len(args) > 0 {
+				return errors.New("do not specify an id when using --failed")
+			}
+			return clientDeleteFailed(apiServerURL)
+		}
+		if len(args) != 1 {
+			return errors.New("id is required (or use --failed to delete all failed analyses)")
+		}
+		return clientDelete(apiServerURL, args[0], false)
 	},
 }
 
@@ -183,6 +193,8 @@ func init() {
 	analysisAddBulkCmd.Flags().StringVar(&addBulkDir, "dir", "", "directory of samples")
 	analysisAddBulkCmd.Flags().StringVar(&addBulkHashes, "hashes", "", "comma-separated hashes")
 	analysisAddBulkCmd.Flags().StringVar(&addBulkInstrumentation, "instrumentation", "", "instrumentation profile")
+
+	analysisDeleteCmd.Flags().BoolVar(&deleteFailedFlag, "failed", false, "allow deletion of failed analyses")
 
 	workersCmd.AddCommand(
 		workersListCmd,
@@ -379,10 +391,13 @@ func clientStatus(baseURL string) error {
 	return nil
 }
 
-func clientDelete(baseURL, id string) error {
+func clientDelete(baseURL, id string, allowFailed bool) error {
 	req, err := http.NewRequest(http.MethodDelete, strings.TrimRight(baseURL, "/")+"/analyses/"+id, nil)
 	if err != nil {
 		return err
+	}
+	if allowFailed {
+		req.Header.Set("X-Allow-Failed", "true")
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -394,6 +409,32 @@ func clientDelete(baseURL, id string) error {
 		return fmt.Errorf("delete failed: %s", strings.TrimSpace(string(body)))
 	}
 	fmt.Println("Deleted", id)
+	return nil
+}
+
+func clientDeleteFailed(baseURL string) error {
+	req, err := http.NewRequest(http.MethodDelete, strings.TrimRight(baseURL, "/")+"/analyses?state=failed", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete failed analyses failed: %s", strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Deleted int    `json:"deleted"`
+		State   string `json:"state"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil && payload.Deleted > 0 {
+		fmt.Printf("Deleted %d %s analyses\n", payload.Deleted, payload.State)
+		return nil
+	}
+	fmt.Println("Deleted 0 failed analyses")
 	return nil
 }
 
