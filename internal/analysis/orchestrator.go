@@ -193,14 +193,17 @@ func (o *Orchestrator) reconcile(ctx context.Context) error {
 	if o.ledger == nil {
 		return errors.New("ledger is not configured")
 	}
+	o.logger.Debug("reconciling ledger and runtime state")
 	if err := o.ledger.Reload(); err != nil {
 		return fmt.Errorf("reload ledger: %w", err)
 	}
 	records := o.ledger.List()
+	o.logger.Debug("loaded ledger records", "count", len(records))
 	statuses, err := o.listJobs(ctx)
 	if err != nil {
 		return fmt.Errorf("list runtime state: %w", err)
 	}
+	o.logger.Debug("loaded runtime statuses", "count", len(statuses))
 	statusByID := make(map[string]RuntimeStatus, len(statuses))
 	for _, status := range statuses {
 		statusByID[status.ID] = status
@@ -225,6 +228,7 @@ func (o *Orchestrator) reconcile(ctx context.Context) error {
 		switch rec.State {
 		case StateQueued:
 			if o.ledger.HasBatchPredecessor(rec.ID) {
+				o.logger.Debug("deferring queued analysis; batch predecessor still running", "id", rec.ID, "batch", rec.BatchID, "position", rec.BatchPosition)
 				continue
 			}
 			if err := o.maybeStart(ctx, rec); err != nil {
@@ -234,6 +238,8 @@ func (o *Orchestrator) reconcile(ctx context.Context) error {
 					r.LastError = err.Error()
 					return nil
 				})
+			} else {
+				o.logger.Debug("started analysis", "id", rec.ID, "sample", rec.SampleID, "c2", rec.C2Address)
 			}
 		case StateStale, StateStopping:
 			status, exists := statusByID[rec.ID]
