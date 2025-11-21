@@ -27,6 +27,7 @@ var (
 	addBulkHashes          string
 	addBulkInstrumentation string
 	deleteFailedFlag       bool
+	restartC2Address       string
 )
 
 var analysisCmd = &cobra.Command{
@@ -84,7 +85,7 @@ var analysisRestartCmd = &cobra.Command{
 	Short: "restart (re-queue) an analysis",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return clientRestart(apiServerURL, args[0])
+		return clientRestart(apiServerURL, args[0], restartC2Address)
 	},
 }
 
@@ -109,6 +110,8 @@ func init() {
 	analysisAddBulkCmd.Flags().StringVar(&addBulkInstrumentation, "instrumentation", "", "instrumentation profile")
 
 	analysisDeleteCmd.Flags().BoolVar(&deleteFailedFlag, "failed", false, "delete all failed analyses")
+
+	analysisRestartCmd.Flags().StringVar(&restartC2Address, "c2", "", "override C2 address when restarting")
 
 	rootCmd.AddCommand(analysisCmd)
 }
@@ -234,12 +237,15 @@ func clientAdd(baseURL, sampleID, samplePath, sourceHash, c2, instrumentation st
 	return nil
 }
 
-func clientRestart(baseURL, id string) error {
+func clientRestart(baseURL, id, c2 string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return errors.New("id is required")
 	}
-	body := map[string]string{"state": string(analysis.StateQueued)}
+	body := map[string]interface{}{"state": string(analysis.StateQueued)}
+	if strings.TrimSpace(c2) != "" {
+		body["c2_address"] = c2
+	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err
