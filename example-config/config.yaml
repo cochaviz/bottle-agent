@@ -2,11 +2,11 @@ monitoring:
     enabled: true
     eve_path: /var/log/suricata/eve.json
     check_interval: 35s # slightly larger than default gomon timewindow of 30s
-    default_timeout: 2m
-    analysis_timeout: 0 # disable analysis timeout
+    default_timeout: 6h # can be very large since malwarebazaar has a separate timeout
+    analysis_timeout: 0m # disable analysis timeout
     alerts:
         - sid: 1000011 # C2 Traffic: C2 Communicates with Sandbox (PSH)
-          timeout: 10m
+          timeout: 30m
 malwarebazaar:
     enabled: true
     api_key: ""
@@ -18,6 +18,6 @@ malwarebazaar:
         instrumentation: /opt/bottle-warden/instrumentation/default.yaml
         sample_timeout: 2m
         sandbox_timeout: 3m
-        lookback_hours: 1
+        lookback_hours: 2
         signatures:
             - mirai
