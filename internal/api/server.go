@@ -1,5 +1,7 @@
 package api
 
+//go:generate sh -c "cd ../.. && go run github.com/swaggo/swag/cmd/swag@v1.16.6 init --generalInfo internal/api/server.go --dir . --output internal/api/docs --parseDependency --parseInternal"
+
 import (
 	"context"
 	"encoding/json"
@@ -10,10 +12,20 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cochaviz/bottle-warden/internal/analysis"
+	"github.com/cochaviz/bottle-warden/internal/api/docs"
+	"github.com/cochaviz/bottle/daemon"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
+
+// @title bottle-warden API
+// @version 1.0
+// @description REST API for orchestrating bottle analyses and workers.
+// @BasePath /
 
 // HashDownloader fetches samples from an external source using a hash.
 type HashDownloader interface {
@@ -38,6 +50,8 @@ type Server struct {
 	logger       *slog.Logger
 	downloader   HashDownloader
 	sampleDir    string
+	openapiOnce  sync.Once
+	openapiJSON  []byte
 }
 
 // NewServer instantiates the HTTP server.
@@ -72,16 +86,11 @@ func NewServer(cfg Config) (*Server, error) {
 
 // Run starts the HTTP listener and blocks until the context is cancelled.
 func (s *Server) Run(ctx context.Context) error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", s.handleHealth)
-	mux.HandleFunc("/analyses", s.handleAnalysesRoot)
-	mux.HandleFunc("/analyses/", s.handleAnalysesSubpath)
-	mux.HandleFunc("/workers", s.handleWorkersRoot)
-	mux.HandleFunc("/workers/", s.handleWorkersSubpath)
+	router := s.buildRouter()
 
 	srv := &http.Server{
 		Addr:    s.addr,
-		Handler: mux,
+		Handler: router,
 	}
 
 	go func() {
@@ -98,94 +107,84 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
+func (s *Server) buildRouter() http.Handler {
+	r := chi.NewRouter()
+	r.Use(middleware.StripSlashes)
+
+	r.Get("/health", s.handleHealth)
+	r.Route("/analyses", func(r chi.Router) {
+		r.Get("/", s.handleListAnalyses)
+		r.Post("/", s.handleCreateAnalysis)
+		r.Delete("/", s.handleDeleteAnalyses)
+		r.Post("/batch", s.handleBatch)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Put("/", s.updateAnalysisHandler)
+			r.Delete("/", s.deleteAnalysisHandler)
+		})
+	})
+	r.Route("/workers", func(r chi.Router) {
+		r.Get("/", s.handleListWorkers)
+		r.Get("/{id}", s.inspectWorkerHandler)
+	})
+	r.Get("/openapi.json", s.handleOpenAPI)
+
+	return r
+}
+
+// handleHealth responds with a simple status indicator.
+// @Summary Health check
+// @Tags system
+// @Produce json
+// @Success 200 {object} HealthStatus
+// @Router /health [get]
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	s.respondJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	s.respondJSON(w, http.StatusOK, HealthStatus{Status: "ok"})
 }
 
-func (s *Server) handleAnalysesRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/analyses" {
-		http.NotFound(w, r)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		s.handleListAnalyses(w, r)
-	case http.MethodPost:
-		s.handleCreateAnalysis(w, r)
-	case http.MethodDelete:
-		s.handleDeleteAnalyses(w, r)
-	default:
-		s.methodNotAllowed(w, http.MethodGet, http.MethodPost, http.MethodDelete)
-	}
+func (s *Server) updateAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	s.handleUpdateAnalysis(w, r, chi.URLParam(r, "id"))
 }
 
-func (s *Server) handleAnalysesSubpath(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/analyses/")
-	if path == "" {
-		s.handleAnalysesRoot(w, r)
-		return
-	}
-	if strings.Trim(path, "/") == "batch" {
-		if r.Method != http.MethodPost {
-			s.methodNotAllowed(w, http.MethodPost)
-			return
-		}
-		s.handleBatch(w, r)
-		return
-	}
-	chunks := strings.Split(strings.Trim(path, "/"), "/")
-	if len(chunks) != 1 || chunks[0] == "" {
-		http.NotFound(w, r)
-		return
-	}
-	id := chunks[0]
-	switch r.Method {
-	case http.MethodPut:
-		s.handleUpdateAnalysis(w, r, id)
-	case http.MethodDelete:
-		s.handleDeleteAnalysis(w, r, id)
-	default:
-		s.methodNotAllowed(w, http.MethodPut, http.MethodDelete)
-	}
+func (s *Server) deleteAnalysisHandler(w http.ResponseWriter, r *http.Request) {
+	s.handleDeleteAnalysis(w, r, chi.URLParam(r, "id"))
 }
 
-func (s *Server) handleWorkersRoot(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/workers" {
-		http.NotFound(w, r)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		s.handleListWorkers(w, r)
-	default:
-		s.methodNotAllowed(w, http.MethodGet)
-	}
+func (s *Server) inspectWorkerHandler(w http.ResponseWriter, r *http.Request) {
+	s.handleInspectWorker(w, r, chi.URLParam(r, "id"))
 }
 
-func (s *Server) handleWorkersSubpath(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/workers/")
-	if path == "" {
-		s.handleWorkersRoot(w, r)
-		return
-	}
-	chunks := strings.Split(strings.Trim(path, "/"), "/")
-	if len(chunks) != 1 || chunks[0] == "" {
-		http.NotFound(w, r)
-		return
-	}
-	switch r.Method {
-	case http.MethodGet:
-		s.handleInspectWorker(w, r, chunks[0])
-	default:
-		s.methodNotAllowed(w, http.MethodGet)
-	}
+// @Summary Get OpenAPI document
+// @Tags system
+// @Produce json
+// @Success 200 {object} any
+// @Router /openapi.json [get]
+func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
+	s.openapiOnce.Do(func() {
+		docs.SwaggerInfo.BasePath = "/"
+		s.openapiJSON = []byte(docs.SwaggerInfo.ReadDoc())
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(s.openapiJSON)
 }
 
+// @Summary List analyses
+// @Tags analyses
+// @Produce json
+// @Success 200 {array} analysis.Record
+// @Router /analyses [get]
 func (s *Server) handleListAnalyses(w http.ResponseWriter, r *http.Request) {
 	records := s.ledger.List()
 	s.respondJSON(w, http.StatusOK, records)
 }
 
+// @Summary List workers
+// @Tags workers
+// @Produce json
+// @Success 200 {array} analysis.RuntimeStatus
+// @Failure 503 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workers [get]
 func (s *Server) handleListWorkers(w http.ResponseWriter, r *http.Request) {
 	if s.orchestrator == nil {
 		s.respondError(w, http.StatusServiceUnavailable, errors.New("orchestrator is not configured"))
@@ -203,7 +202,8 @@ func (s *Server) handleListWorkers(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusOK, statuses)
 }
 
-type createRequest struct {
+// CreateAnalysisRequest represents the payload to add a single analysis.
+type CreateAnalysisRequest struct {
 	SampleID        string               `json:"sample_id"`
 	SamplePath      string               `json:"sample_path"`
 	C2Address       string               `json:"c2_address"`
@@ -217,8 +217,16 @@ type createRequest struct {
 	Source          *analysis.SourceSpec `json:"source"`
 }
 
+// @Summary Create analysis
+// @Tags analyses
+// @Accept json
+// @Produce json
+// @Param request body CreateAnalysisRequest true "Analysis configuration"
+// @Success 201 {object} analysis.Record
+// @Failure 400 {object} ErrorResponse
+// @Router /analyses [post]
 func (s *Server) handleCreateAnalysis(w http.ResponseWriter, r *http.Request) {
-	var req createRequest
+	var req CreateAnalysisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
 		return
@@ -274,7 +282,8 @@ func (s *Server) handleCreateAnalysis(w http.ResponseWriter, r *http.Request) {
 	s.respondJSON(w, http.StatusCreated, created)
 }
 
-type updateRequest struct {
+// UpdateAnalysisRequest carries partial fields for an existing analysis.
+type UpdateAnalysisRequest struct {
 	SamplePath      *string            `json:"sample_path"`
 	C2Address       *string            `json:"c2_address"`
 	Instrumentation *string            `json:"instrumentation"`
@@ -286,12 +295,21 @@ type updateRequest struct {
 	Notes           *string            `json:"notes"`
 }
 
+// @Summary Update analysis
+// @Tags analyses
+// @Accept json
+// @Produce json
+// @Param id path string true "Analysis ID"
+// @Param request body UpdateAnalysisRequest true "Fields to update"
+// @Success 200 {object} analysis.Record
+// @Failure 400 {object} ErrorResponse
+// @Router /analyses/{id} [put]
 func (s *Server) handleUpdateAnalysis(w http.ResponseWriter, r *http.Request, id string) {
 	if strings.TrimSpace(id) == "" {
 		s.respondError(w, http.StatusBadRequest, errors.New("id is required"))
 		return
 	}
-	var req updateRequest
+	var req UpdateAnalysisRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
 		return
@@ -343,6 +361,13 @@ func (s *Server) handleUpdateAnalysis(w http.ResponseWriter, r *http.Request, id
 	s.respondJSON(w, http.StatusOK, updated)
 }
 
+// @Summary Delete analysis
+// @Tags analyses
+// @Param id path string true "Analysis ID"
+// @Param X-Allow-Failed header bool false "Allow deletion of failed analyses"
+// @Success 204
+// @Failure 400 {object} ErrorResponse
+// @Router /analyses/{id} [delete]
 func (s *Server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request, id string) {
 	if strings.TrimSpace(id) == "" {
 		s.respondError(w, http.StatusBadRequest, errors.New("id is required"))
@@ -357,6 +382,13 @@ func (s *Server) handleDeleteAnalysis(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// @Summary Delete analyses by state
+// @Tags analyses
+// @Produce json
+// @Param state query string true "State filter (only failed supported)" Enums(failed)
+// @Success 200 {object} DeleteAnalysesResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /analyses [delete]
 func (s *Server) handleDeleteAnalyses(w http.ResponseWriter, r *http.Request) {
 	stateParam := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("state")))
 	if stateParam == "" {
@@ -373,13 +405,14 @@ func (s *Server) handleDeleteAnalyses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.bump()
-	s.respondJSON(w, http.StatusOK, map[string]any{
-		"deleted": deleted,
-		"state":   stateParam,
+	s.respondJSON(w, http.StatusOK, DeleteAnalysesResponse{
+		Deleted: deleted,
+		State:   stateParam,
 	})
 }
 
-type batchRequest struct {
+// BatchRequest is used to seed analyses from either a directory or hashes.
+type BatchRequest struct {
 	Directory       string            `json:"directory"`
 	Hashes          []string          `json:"hashes"`
 	Instrumentation string            `json:"instrumentation"`
@@ -388,8 +421,37 @@ type batchRequest struct {
 	Metadata        map[string]string `json:"metadata"`
 }
 
+// BatchResponse is returned when creating a batch of analyses.
+type BatchResponse struct {
+	BatchID  string             `json:"batch_id"`
+	Count    int                `json:"count"`
+	Analyses []*analysis.Record `json:"analyses"`
+}
+
+// DeleteAnalysesResponse represents the result of bulk delete.
+type DeleteAnalysesResponse struct {
+	Deleted int    `json:"deleted"`
+	State   string `json:"state"`
+}
+
+// HealthStatus is returned by the health endpoint.
+type HealthStatus struct {
+	Status string `json:"status"`
+}
+
+// WorkerDetails is an alias to expose daemon worker details in docs.
+type WorkerDetails = daemon.WorkerDetails
+
+// @Summary Create analyses in batch
+// @Tags analyses
+// @Accept json
+// @Produce json
+// @Param request body BatchRequest true "Batch request payload"
+// @Success 201 {object} BatchResponse
+// @Failure 400 {object} ErrorResponse
+// @Router /analyses/batch [post]
 func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
-	var req batchRequest
+	var req BatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, fmt.Errorf("decode request: %w", err))
 		return
@@ -433,10 +495,10 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			created = append(created, rec)
 		}
 		s.bump()
-		s.respondJSON(w, http.StatusCreated, map[string]any{
-			"batch_id": batchID,
-			"count":    len(created),
-			"analyses": created,
+		s.respondJSON(w, http.StatusCreated, BatchResponse{
+			BatchID:  batchID,
+			Count:    len(created),
+			Analyses: created,
 		})
 		return
 	}
@@ -479,14 +541,22 @@ func (s *Server) handleBatch(w http.ResponseWriter, r *http.Request) {
 			created = append(created, rec)
 		}
 		s.bump()
-		s.respondJSON(w, http.StatusCreated, map[string]any{
-			"batch_id": batchID,
-			"count":    len(created),
-			"analyses": created,
+		s.respondJSON(w, http.StatusCreated, BatchResponse{
+			BatchID:  batchID,
+			Count:    len(created),
+			Analyses: created,
 		})
 	}
 }
 
+// @Summary Inspect worker
+// @Tags workers
+// @Produce json
+// @Param id path string true "Worker ID"
+// @Success 200 {object} WorkerDetails
+// @Failure 503 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /workers/{id} [get]
 func (s *Server) handleInspectWorker(w http.ResponseWriter, r *http.Request, id string) {
 	if s.orchestrator == nil {
 		s.respondError(w, http.StatusServiceUnavailable, errors.New("orchestrator is not configured"))
@@ -516,9 +586,14 @@ func (s *Server) respondJSON(w http.ResponseWriter, status int, payload interfac
 	}
 }
 
+// ErrorResponse is the JSON shape for errors.
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
 func (s *Server) respondError(w http.ResponseWriter, status int, err error) {
 	s.logger.Warn("request failed", "status", status, "error", err)
-	s.respondJSON(w, status, map[string]string{"error": err.Error()})
+	s.respondJSON(w, status, ErrorResponse{Error: err.Error()})
 }
 
 func (s *Server) bump() {

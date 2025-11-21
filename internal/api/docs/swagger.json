@@ -1,0 +1,768 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "REST API for orchestrating bottle analyses and workers.",
+        "title": "bottle-warden API",
+        "contact": {},
+        "version": "1.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/analyses": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "List analyses",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/analysis.Record"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "Create analysis",
+                "parameters": [
+                    {
+                        "description": "Analysis configuration",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CreateAnalysisRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/analysis.Record"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "Delete analyses by state",
+                "parameters": [
+                    {
+                        "enum": [
+                            "failed"
+                        ],
+                        "type": "string",
+                        "description": "State filter (only failed supported)",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.DeleteAnalysesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/analyses/batch": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "Create analyses in batch",
+                "parameters": [
+                    {
+                        "description": "Batch request payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/api.BatchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/analyses/{id}": {
+            "put": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "Update analysis",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Analysis ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.UpdateAnalysisRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/analysis.Record"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "analyses"
+                ],
+                "summary": "Delete analysis",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Analysis ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Allow deletion of failed analyses",
+                        "name": "X-Allow-Failed",
+                        "in": "header"
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.HealthStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/openapi.json": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "system"
+                ],
+                "summary": "Get OpenAPI document",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {}
+                    }
+                }
+            }
+        },
+        "/workers": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workers"
+                ],
+                "summary": "List workers",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/analysis.RuntimeStatus"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/workers/{id}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workers"
+                ],
+                "summary": "Inspect worker",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Worker ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.WorkerDetails"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "analysis.Duration": {
+            "type": "object",
+            "properties": {
+                "time.Duration": {
+                    "type": "integer",
+                    "format": "int64",
+                    "enum": [
+                        -9223372036854775808,
+                        9223372036854775807,
+                        1,
+                        1000,
+                        1000000,
+                        1000000000,
+                        60000000000,
+                        3600000000000
+                    ],
+                    "x-enum-varnames": [
+                        "minDuration",
+                        "maxDuration",
+                        "Nanosecond",
+                        "Microsecond",
+                        "Millisecond",
+                        "Second",
+                        "Minute",
+                        "Hour"
+                    ]
+                }
+            }
+        },
+        "analysis.Record": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "batch_position": {
+                    "type": "integer"
+                },
+                "c2_address": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instrumentation": {
+                    "type": "string"
+                },
+                "last_alert_times": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "last_error": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "sample_args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sample_id": {
+                    "type": "string"
+                },
+                "sample_path": {
+                    "type": "string"
+                },
+                "sample_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "sandbox_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "source": {
+                    "$ref": "#/definitions/analysis.SourceSpec"
+                },
+                "started_at": {
+                    "type": "string"
+                },
+                "state": {
+                    "$ref": "#/definitions/analysis.State"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "analysis.RuntimeStatus": {
+            "type": "object",
+            "properties": {
+                "c2_ip": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "running": {
+                    "type": "boolean"
+                },
+                "sample": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "analysis.SourceSpec": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "$ref": "#/definitions/analysis.SourceType"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "analysis.SourceType": {
+            "type": "string",
+            "enum": [
+                "file",
+                "url",
+                "hash"
+            ],
+            "x-enum-varnames": [
+                "SourceFile",
+                "SourceURL",
+                "SourceHash"
+            ]
+        },
+        "analysis.State": {
+            "type": "string",
+            "enum": [
+                "unknown",
+                "queued",
+                "running",
+                "stopping",
+                "stale",
+                "stopped",
+                "failed",
+                "completed"
+            ],
+            "x-enum-varnames": [
+                "StateUnknown",
+                "StateQueued",
+                "StateRunning",
+                "StateStopping",
+                "StateStale",
+                "StateStopped",
+                "StateFailed",
+                "StateComplete"
+            ]
+        },
+        "api.BatchRequest": {
+            "type": "object",
+            "properties": {
+                "directory": {
+                    "type": "string"
+                },
+                "hashes": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "instrumentation": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "sample_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "sandbox_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                }
+            }
+        },
+        "api.BatchResponse": {
+            "type": "object",
+            "properties": {
+                "analyses": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/analysis.Record"
+                    }
+                },
+                "batch_id": {
+                    "type": "string"
+                },
+                "count": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.CreateAnalysisRequest": {
+            "type": "object",
+            "properties": {
+                "batch_id": {
+                    "type": "string"
+                },
+                "c2_address": {
+                    "type": "string"
+                },
+                "instrumentation": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "sample_args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sample_id": {
+                    "type": "string"
+                },
+                "sample_path": {
+                    "type": "string"
+                },
+                "sample_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "sandbox_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "source": {
+                    "$ref": "#/definitions/analysis.SourceSpec"
+                }
+            }
+        },
+        "api.DeleteAnalysesResponse": {
+            "type": "object",
+            "properties": {
+                "deleted": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.HealthStatus": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.UpdateAnalysisRequest": {
+            "type": "object",
+            "properties": {
+                "c2_address": {
+                    "type": "string"
+                },
+                "instrumentation": {
+                    "type": "string"
+                },
+                "metadata": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "sample_args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sample_path": {
+                    "type": "string"
+                },
+                "sample_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "sandbox_timeout": {
+                    "$ref": "#/definitions/analysis.Duration"
+                },
+                "state": {
+                    "$ref": "#/definitions/analysis.State"
+                }
+            }
+        },
+        "api.WorkerDetails": {
+            "type": "object",
+            "properties": {
+                "duration": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "options": {
+                    "$ref": "#/definitions/daemon.StartAnalysisRequest"
+                },
+                "status": {
+                    "$ref": "#/definitions/daemon.WorkerStatus"
+                }
+            }
+        },
+        "daemon.StartAnalysisRequest": {
+            "type": "object",
+            "properties": {
+                "c2_address": {
+                    "type": "string"
+                },
+                "connection_uri": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "image_dir": {
+                    "type": "string"
+                },
+                "instrumentation": {
+                    "type": "string"
+                },
+                "log_level": {
+                    "type": "string"
+                },
+                "override_arch": {
+                    "type": "string"
+                },
+                "run_dir": {
+                    "type": "string"
+                },
+                "sample_args": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "sample_path": {
+                    "type": "string"
+                },
+                "sample_timeout": {
+                    "$ref": "#/definitions/time.Duration"
+                },
+                "sandbox_lifetime": {
+                    "$ref": "#/definitions/time.Duration"
+                }
+            }
+        },
+        "daemon.WorkerStatus": {
+            "type": "object",
+            "properties": {
+                "c2_ip": {
+                    "type": "string"
+                },
+                "completed_at": {
+                    "type": "string"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "running": {
+                    "type": "boolean"
+                },
+                "sample": {
+                    "type": "string"
+                },
+                "started_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "time.Duration": {
+            "type": "integer",
+            "format": "int64",
+            "enum": [
+                -9223372036854775808,
+                9223372036854775807,
+                1,
+                1000,
+                1000000,
+                1000000000,
+                60000000000,
+                3600000000000
+            ],
+            "x-enum-varnames": [
+                "minDuration",
+                "maxDuration",
+                "Nanosecond",
+                "Microsecond",
+                "Millisecond",
+                "Second",
+                "Minute",
+                "Hour"
+            ]
+        }
+    }
+}

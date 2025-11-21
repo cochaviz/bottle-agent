@@ -1,0 +1,517 @@
+basePath: /
+definitions:
+  analysis.Duration:
+    properties:
+      time.Duration:
+        enum:
+        - -9223372036854775808
+        - 9223372036854775807
+        - 1
+        - 1000
+        - 1000000
+        - 1000000000
+        - 60000000000
+        - 3600000000000
+        format: int64
+        type: integer
+        x-enum-varnames:
+        - minDuration
+        - maxDuration
+        - Nanosecond
+        - Microsecond
+        - Millisecond
+        - Second
+        - Minute
+        - Hour
+    type: object
+  analysis.Record:
+    properties:
+      batch_id:
+        type: string
+      batch_position:
+        type: integer
+      c2_address:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      instrumentation:
+        type: string
+      last_alert_times:
+        additionalProperties:
+          type: string
+        type: object
+      last_error:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      notes:
+        type: string
+      sample_args:
+        items:
+          type: string
+        type: array
+      sample_id:
+        type: string
+      sample_path:
+        type: string
+      sample_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      sandbox_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      source:
+        $ref: '#/definitions/analysis.SourceSpec'
+      started_at:
+        type: string
+      state:
+        $ref: '#/definitions/analysis.State'
+      updated_at:
+        type: string
+    type: object
+  analysis.RuntimeStatus:
+    properties:
+      c2_ip:
+        type: string
+      error:
+        type: string
+      id:
+        type: string
+      running:
+        type: boolean
+      sample:
+        type: string
+      started_at:
+        type: string
+    type: object
+  analysis.SourceSpec:
+    properties:
+      type:
+        $ref: '#/definitions/analysis.SourceType'
+      value:
+        type: string
+    type: object
+  analysis.SourceType:
+    enum:
+    - file
+    - url
+    - hash
+    type: string
+    x-enum-varnames:
+    - SourceFile
+    - SourceURL
+    - SourceHash
+  analysis.State:
+    enum:
+    - unknown
+    - queued
+    - running
+    - stopping
+    - stale
+    - stopped
+    - failed
+    - completed
+    type: string
+    x-enum-varnames:
+    - StateUnknown
+    - StateQueued
+    - StateRunning
+    - StateStopping
+    - StateStale
+    - StateStopped
+    - StateFailed
+    - StateComplete
+  api.BatchRequest:
+    properties:
+      directory:
+        type: string
+      hashes:
+        items:
+          type: string
+        type: array
+      instrumentation:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      sample_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      sandbox_timeout:
+        $ref: '#/definitions/analysis.Duration'
+    type: object
+  api.BatchResponse:
+    properties:
+      analyses:
+        items:
+          $ref: '#/definitions/analysis.Record'
+        type: array
+      batch_id:
+        type: string
+      count:
+        type: integer
+    type: object
+  api.CreateAnalysisRequest:
+    properties:
+      batch_id:
+        type: string
+      c2_address:
+        type: string
+      instrumentation:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      notes:
+        type: string
+      sample_args:
+        items:
+          type: string
+        type: array
+      sample_id:
+        type: string
+      sample_path:
+        type: string
+      sample_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      sandbox_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      source:
+        $ref: '#/definitions/analysis.SourceSpec'
+    type: object
+  api.DeleteAnalysesResponse:
+    properties:
+      deleted:
+        type: integer
+      state:
+        type: string
+    type: object
+  api.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  api.HealthStatus:
+    properties:
+      status:
+        type: string
+    type: object
+  api.UpdateAnalysisRequest:
+    properties:
+      c2_address:
+        type: string
+      instrumentation:
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        type: object
+      notes:
+        type: string
+      sample_args:
+        items:
+          type: string
+        type: array
+      sample_path:
+        type: string
+      sample_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      sandbox_timeout:
+        $ref: '#/definitions/analysis.Duration'
+      state:
+        $ref: '#/definitions/analysis.State'
+    type: object
+  api.WorkerDetails:
+    properties:
+      duration:
+        $ref: '#/definitions/time.Duration'
+      options:
+        $ref: '#/definitions/daemon.StartAnalysisRequest'
+      status:
+        $ref: '#/definitions/daemon.WorkerStatus'
+    type: object
+  daemon.StartAnalysisRequest:
+    properties:
+      c2_address:
+        type: string
+      connection_uri:
+        type: string
+      id:
+        type: string
+      image_dir:
+        type: string
+      instrumentation:
+        type: string
+      log_level:
+        type: string
+      override_arch:
+        type: string
+      run_dir:
+        type: string
+      sample_args:
+        items:
+          type: string
+        type: array
+      sample_path:
+        type: string
+      sample_timeout:
+        $ref: '#/definitions/time.Duration'
+      sandbox_lifetime:
+        $ref: '#/definitions/time.Duration'
+    type: object
+  daemon.WorkerStatus:
+    properties:
+      c2_ip:
+        type: string
+      completed_at:
+        type: string
+      error:
+        type: string
+      id:
+        type: string
+      running:
+        type: boolean
+      sample:
+        type: string
+      started_at:
+        type: string
+    type: object
+  time.Duration:
+    enum:
+    - -9223372036854775808
+    - 9223372036854775807
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+    - 60000000000
+    - 3600000000000
+    format: int64
+    type: integer
+    x-enum-varnames:
+    - minDuration
+    - maxDuration
+    - Nanosecond
+    - Microsecond
+    - Millisecond
+    - Second
+    - Minute
+    - Hour
+info:
+  contact: {}
+  description: REST API for orchestrating bottle analyses and workers.
+  title: bottle-warden API
+  version: "1.0"
+paths:
+  /analyses:
+    delete:
+      parameters:
+      - description: State filter (only failed supported)
+        enum:
+        - failed
+        in: query
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.DeleteAnalysesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Delete analyses by state
+      tags:
+      - analyses
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/analysis.Record'
+            type: array
+      summary: List analyses
+      tags:
+      - analyses
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Analysis configuration
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.CreateAnalysisRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/analysis.Record'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create analysis
+      tags:
+      - analyses
+  /analyses/{id}:
+    delete:
+      parameters:
+      - description: Analysis ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Allow deletion of failed analyses
+        in: header
+        name: X-Allow-Failed
+        type: boolean
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Delete analysis
+      tags:
+      - analyses
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Analysis ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.UpdateAnalysisRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/analysis.Record'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Update analysis
+      tags:
+      - analyses
+  /analyses/batch:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Batch request payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.BatchRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/api.BatchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Create analyses in batch
+      tags:
+      - analyses
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.HealthStatus'
+      summary: Health check
+      tags:
+      - system
+  /openapi.json:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema: {}
+      summary: Get OpenAPI document
+      tags:
+      - system
+  /workers:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/analysis.RuntimeStatus'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: List workers
+      tags:
+      - workers
+  /workers/{id}:
+    get:
+      parameters:
+      - description: Worker ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.WorkerDetails'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Inspect worker
+      tags:
+      - workers
+swagger: "2.0"
