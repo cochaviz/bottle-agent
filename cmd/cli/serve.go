@@ -148,7 +148,16 @@ func runServer(logger *slog.Logger, listenAddr, ledgerPath, daemonSocket string,
 		monitor = analysis.NewMonitor(ledger, orchestrator, monitoringCfg, logger)
 	}
 
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
+
+	go func() {
+		if orchestrator == nil {
+			return
+		}
+		if err := orchestrator.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			errCh <- err
+		}
+	}()
 
 	go func() {
 		errCh <- httpServer.Run(ctx)
